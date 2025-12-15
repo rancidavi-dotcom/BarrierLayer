@@ -16,6 +16,7 @@
 #include "../include/file_hooks.h"
 #include "gdi_hooks.h" // New include
 #include "user32_hooks.h" // New include
+#include "../wine_process_filter.h" // Wine process filtering
 
 #define MAX_RULES 100
 #define MAX_LINE_LEN 256
@@ -183,6 +184,15 @@ int access(const char* pathname, int mode) {
 
 __attribute__((constructor))
 void file_hooks_init() {
+    // Check if we should skip BarrierLayer for Wine system processes
+    if (should_skip_barrierlayer()) {
+        char process_info[256];
+        get_process_info(process_info, sizeof(process_info));
+        
+        // Silent exit for Wine system processes - no logging to avoid interference
+        return;
+    }
+    
     if (ultra_logger_init() == 0) {
         ULTRA_INFO("INIT", "File hooks initialized with ultra logging");
     }

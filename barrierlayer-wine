@@ -1,0 +1,12 @@
+#!/bin/bash
+# BarrierLayer Wine-Safe Launcher
+# This script automatically enables Wine-safe mode to prevent hooking system processes
+
+# Enable Wine-safe mode by default
+export BARRIERLAYER_WINE_SAFE=1
+
+# Set logging level for debugging
+export BARRIERLAYER_LOG_LEVEL=INFO
+
+# Execute BarrierLayer with Wine-safe mode
+exec /opt/barrierlayer/bin/barrierlayer "$@"
