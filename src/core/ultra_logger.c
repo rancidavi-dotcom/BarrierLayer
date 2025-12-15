@@ -244,6 +244,19 @@ int ultra_logger_init(void) {
         return 0;
     }
     
+    // Verificar se logging está desabilitado
+    char *nolog = getenv("BARRIERLAYER_NOLOG");
+    char *disable_ultra = getenv("BARRIERLAYER_DISABLE_ULTRA_LOG");
+    char *log_level = getenv("BARRIERLAYER_LOG_LEVEL");
+    
+    if ((nolog && strcmp(nolog, "1") == 0) || 
+        (disable_ultra && strcmp(disable_ultra, "1") == 0) ||
+        (log_level && strcmp(log_level, "SILENT") == 0)) {
+        // Modo silencioso - não inicializar logging
+        g_logger.initialized = true; // Marcar como inicializado para evitar tentativas futuras
+        return 0;
+    }
+    
     memset(&g_logger, 0, sizeof(g_logger));
     
     if (pthread_mutex_init(&g_logger.log_mutex, NULL) != 0) {
@@ -316,6 +329,17 @@ void ultra_logger_cleanup(void) {
 
 // Função principal de logging
 void ultra_log(int level, const char *category, const char *format, ...) {
+    // Verificar se logging está desabilitado
+    char *nolog = getenv("BARRIERLAYER_NOLOG");
+    char *disable_ultra = getenv("BARRIERLAYER_DISABLE_ULTRA_LOG");
+    char *log_level_env = getenv("BARRIERLAYER_LOG_LEVEL");
+    
+    if ((nolog && strcmp(nolog, "1") == 0) || 
+        (disable_ultra && strcmp(disable_ultra, "1") == 0) ||
+        (log_level_env && strcmp(log_level_env, "SILENT") == 0)) {
+        return; // Modo silencioso - não fazer logging
+    }
+    
     if (!g_logger.initialized || level < g_logger.log_level) {
         return;
     }
