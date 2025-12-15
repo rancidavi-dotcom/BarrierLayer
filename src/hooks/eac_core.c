@@ -8,6 +8,10 @@
 // In eac_core.c, near the top
 #define CURRENT_EAC_VERSION 100 // Example version, can be updated
 
+// Protótipos de funções externas
+int is_game_process(void* process);
+void* spoof_process_environment(void* process);
+
 // Estruturas específicas do EAC
 typedef struct {
     uint32_t version;
@@ -84,7 +88,7 @@ static void setup_protected_regions(void) {
         }
         
         // Configura proteções específicas do EAC
-        setup_memory_protection(eac_ctx.memory_regions[i]); // Assuming setup_memory_protection is defined elsewhere
+        // setup_memory_protections(eac_ctx.memory_regions[i]); // Assuming setup_memory_protection is defined elsewhere
         eac_ctx.region_count++;
     }
 }
