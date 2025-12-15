@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <glob.h>
 #include "../include/proton_support.h"
 #include "../include/ultra_logger.h"
 #include "../include/config.h"

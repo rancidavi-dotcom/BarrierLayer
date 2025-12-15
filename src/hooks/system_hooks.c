@@ -4,7 +4,7 @@
 // Exemplo de uso em um hook:
 // logger_log(get_log_path(), "Interceptando NtQuerySystemInformation");
 
-#define _GNU_SOURCE
+// _GNU_SOURCE já definido pelo Makefile
 #include <dlfcn.h>
 #include <stddef.h> // Para NULL
 #include <stdio.h>

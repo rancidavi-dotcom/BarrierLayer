@@ -1,8 +1,8 @@
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <dlfcn.h>
 #include <wchar.h>
-#include <stddef.h> // Incluído para definir wchar_t
+#include <stddef.h>
+#include <stdlib.h>
 #include "../include/logger.h"
 #include "../include/path_utils.h"
 

@@ -63,10 +63,42 @@ static void add_log_entry(const char *symbol, const char *details) {
 }
 
 static bool is_anticheat_process(void) {
-    const char *anticheat_names[] = { "EasyAntiCheat", "BEService", "BattlEye", "Vanguard", NULL };
+    const char *anticheat_names[] = { 
+        "EasyAntiCheat", "BEService", "BattlEye", "Vanguard", 
+        "EACService", "BEDaisy", "VAC", "FairFight", "XIGNCODE",
+        "nProtect", "GameGuard", "PunkBuster", "Ricochet",
+        NULL 
+    };
     int i;
     for (i = 0; anticheat_names[i]; i++) {
         if (strstr(current->comm, anticheat_names[i])) return true;
+    }
+    return false;
+}
+
+static bool is_wine_process(void) {
+    const char *wine_names[] = {
+        "wine", "wineserver", "wine64", "wine-preloader",
+        "steam", "proton", "lutris", "bottles",
+        NULL
+    };
+    int i;
+    for (i = 0; wine_names[i]; i++) {
+        if (strstr(current->comm, wine_names[i])) return true;
+    }
+    return false;
+}
+
+static bool should_hide_file(const char *filename) {
+    const char *hidden_files[] = {
+        "barrierlayer", "/proc/self/maps", "/proc/self/status",
+        "/proc/self/cmdline", "/proc/modules", "/sys/module",
+        "wine", "proton", ".wine", "steamapps",
+        NULL
+    };
+    int i;
+    for (i = 0; hidden_files[i]; i++) {
+        if (strstr(filename, hidden_files[i])) return true;
     }
     return false;
 }
@@ -80,13 +112,18 @@ static int openat_pre_handler(struct kprobe *p, struct pt_regs *regs) {
     if (!filename_kernel) return 0;
 
     if (strncpy_from_user(filename_kernel, filename_user, PATH_MAX) > 0) {
-        if (is_anticheat_process() && (strstr(filename_kernel, "barrierlayer") || strstr(filename_kernel, "/proc/self/maps"))) {
+        // Bloqueia acesso a arquivos sensíveis para anti-cheats
+        if (is_anticheat_process() && should_hide_file(filename_kernel)) {
             add_log_entry(p->symbol_name, "BLOCKED openat for sensitive file");
             regs->ax = -ENOENT;
             kfree(filename_kernel);
             return 1;
         }
-        add_log_entry(p->symbol_name, filename_kernel);
+        
+        // Log normal para outros processos
+        if (!is_wine_process()) {
+            add_log_entry(p->symbol_name, filename_kernel);
+        }
     }
     kfree(filename_kernel);
     return 0;
@@ -119,10 +156,51 @@ static int ptrace_pre_handler(struct kprobe *p, struct pt_regs *regs) {
 // Handler para mmap
 static int mmap_pre_handler(struct kprobe *p, struct pt_regs *regs) {
     char details[128];
+    unsigned long prot = (unsigned long)regs->dx;
+    
     snprintf(details, sizeof(details), "addr=0x%lx len=%lu prot=0x%lx flags=0x%lx fd=%lu off=%lu",
-             (unsigned long)regs->di, (unsigned long)regs->si, (unsigned long)regs->dx,
+             (unsigned long)regs->di, (unsigned long)regs->si, prot,
              (unsigned long)regs->r10, (unsigned long)regs->r8, (unsigned long)regs->r9);
+    
+    // Bloqueia mapeamentos executáveis suspeitos para anti-cheats
+    if (is_anticheat_process() && (prot & PROT_EXEC)) {
+        add_log_entry(p->symbol_name, "BLOCKED executable mmap");
+        regs->ax = -EPERM;
+        return 1;
+    }
+    
     add_log_entry(p->symbol_name, details);
+    return 0;
+}
+
+// Handler para read
+static int read_pre_handler(struct kprobe *p, struct pt_regs *regs) {
+    if (is_anticheat_process()) {
+        char details[64];
+        snprintf(details, sizeof(details), "fd=%lu count=%lu", 
+                (unsigned long)regs->di, (unsigned long)regs->dx);
+        add_log_entry(p->symbol_name, details);
+    }
+    return 0;
+}
+
+// Handler para write
+static int write_pre_handler(struct kprobe *p, struct pt_regs *regs) {
+    if (is_anticheat_process()) {
+        char details[64];
+        snprintf(details, sizeof(details), "fd=%lu count=%lu", 
+                (unsigned long)regs->di, (unsigned long)regs->dx);
+        add_log_entry(p->symbol_name, details);
+    }
+    return 0;
+}
+
+// Handler para getdents64 (listagem de diretórios)
+static int getdents64_pre_handler(struct kprobe *p, struct pt_regs *regs) {
+    if (is_anticheat_process()) {
+        add_log_entry(p->symbol_name, "Directory listing attempt");
+        // Pode filtrar resultados aqui se necessário
+    }
     return 0;
 }
 
@@ -132,12 +210,18 @@ static struct kprobe kp_openat = { .symbol_name = "__x64_sys_openat", .pre_handl
 static struct kprobe kp_execve = { .symbol_name = "__x64_sys_execve", .pre_handler = execve_pre_handler };
 static struct kprobe kp_ptrace = { .symbol_name = "__x64_sys_ptrace", .pre_handler = ptrace_pre_handler };
 static struct kprobe kp_mmap = { .symbol_name = "__x64_sys_mmap", .pre_handler = mmap_pre_handler };
+static struct kprobe kp_read = { .symbol_name = "__x64_sys_read", .pre_handler = read_pre_handler };
+static struct kprobe kp_write = { .symbol_name = "__x64_sys_write", .pre_handler = write_pre_handler };
+static struct kprobe kp_getdents64 = { .symbol_name = "__x64_sys_getdents64", .pre_handler = getdents64_pre_handler };
 
 static struct kprobe *barrierlayer_probes[] = {
     &kp_openat,
     &kp_execve,
     &kp_ptrace,
     &kp_mmap,
+    &kp_read,
+    &kp_write,
+    &kp_getdents64,
 };
 
 // --- Funções de Instalação, /proc, Init e Exit (semelhantes às anteriores) ---

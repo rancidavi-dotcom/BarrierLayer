@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+// _GNU_SOURCE já definido pelo Makefile
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

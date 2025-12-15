@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+// _GNU_SOURCE já definido pelo Makefile
 #include <stdio.h>
 #include <dlfcn.h>
 #include <stddef.h> // Incluído para definir wchar_t
