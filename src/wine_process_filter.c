@@ -77,16 +77,19 @@ int is_wine_system_process(void) {
 
 // Check if we should skip BarrierLayer initialization
 int should_skip_barrierlayer(void) {
-    // Check environment variable override
+    // Check environment variable override to force hook all processes
     if (getenv("BARRIERLAYER_FORCE_ALL")) {
         return 0; // Force hook all processes
     }
     
-    if (getenv("BARRIERLAYER_WINE_SAFE")) {
-        return is_wine_system_process();
+    // Check if Wine-safe mode is explicitly disabled
+    char *wine_safe_disabled = getenv("BARRIERLAYER_WINE_SAFE_DISABLED");
+    if (wine_safe_disabled && strcmp(wine_safe_disabled, "1") == 0) {
+        return 0; // Wine-safe mode disabled, hook all processes
     }
     
-    // Default: skip Wine system processes
+    // Default: ALWAYS enable Wine-safe mode (skip Wine system processes)
+    // This is the safest behavior to prevent Wine corruption
     return is_wine_system_process();
 }
 
