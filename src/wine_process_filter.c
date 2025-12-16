@@ -40,11 +40,18 @@ int is_wine_system_process(void) {
     fp = fopen("/proc/self/cmdline", "r");
     if (!fp) return 0;
     
-    if (fgets(cmdline, sizeof(cmdline), fp) == NULL) {
-        fclose(fp);
-        return 0;
-    }
+    // Read the entire cmdline (null-separated arguments)
+    size_t bytes_read = fread(cmdline, 1, sizeof(cmdline) - 1, fp);
     fclose(fp);
+    
+    if (bytes_read == 0) return 0;
+    
+    cmdline[bytes_read] = '\0';
+    
+    // Convert null bytes to spaces for easier string matching
+    for (size_t i = 0; i < bytes_read; i++) {
+        if (cmdline[i] == '\0') cmdline[i] = ' ';
+    }
     
     // Check if this is a Wine context (command line contains wine-related keywords)
     if (strstr(cmdline, "wine") != NULL || 
