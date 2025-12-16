@@ -186,9 +186,6 @@ __attribute__((constructor))
 void file_hooks_init() {
     // Check if we should skip BarrierLayer for Wine system processes
     if (should_skip_barrierlayer()) {
-        char process_info[256];
-        get_process_info(process_info, sizeof(process_info));
-        
         // Silent exit for Wine system processes - no logging to avoid interference
         return;
     }

@@ -46,6 +46,21 @@ int is_wine_system_process(void) {
     }
     fclose(fp);
     
+    // Check if this is a Wine context (command line contains wine-related keywords)
+    if (strstr(cmdline, "wine") != NULL || 
+        strstr(cmdline, "wineboot") != NULL ||
+        strstr(cmdline, "winemenubuilder") != NULL ||
+        strstr(cmdline, "wineserver") != NULL ||
+        strstr(cmdline, "proton") != NULL) {
+        return 1; // This is a Wine-related process
+    }
+    
+    // Check environment variables for Wine context (only if command line also suggests Wine)
+    if ((strstr(cmdline, "wine") != NULL || strstr(cmdline, "proton") != NULL) &&
+        (getenv("WINEPREFIX") || getenv("WINEDLLPATH") || getenv("WINE") || getenv("PROTON_VERSION"))) {
+        return 1; // We're in a Wine environment with Wine command
+    }
+    
     // Extract process name from command line
     char *last_slash = strrchr(cmdline, '/');
     char *last_backslash = strrchr(cmdline, '\\');
