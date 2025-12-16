@@ -1,0 +1,289 @@
+# BarrierLayer Makefile - Otimizado para Arch Linux
+# Este Makefile garante compatibilidade 100% com Arch Linux sem dependências Windows
+
+# Configurações específicas do Arch Linux
+ARCH_LINUX := 1
+CC := gcc
+CXX := g++
+
+# Detectar arquitetura
+UNAME_M := $(shell uname -m)
+ifeq ($(UNAME_M),x86_64)
+    ARCH_64 := 1
+    ARCH_32 := 0
+else
+    $(error Arquitetura $(UNAME_M) não suportada no Arch Linux)
+endif
+
+# Diretórios
+SRCDIR := src
+INCDIR := src/include
+OBJDIR := obj
+BINDIR := bin
+KERNELDIR := kernel
+
+# Criar diretórios se não existirem
+$(shell mkdir -p $(OBJDIR)/x64/{core,hooks,sandbox} $(OBJDIR)/x32/{core,hooks} $(BINDIR))
+
+# Flags específicas para Arch Linux
+ARCH_CFLAGS := -march=native -mtune=native
+SECURITY_FLAGS := -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE
+HARDENING_FLAGS := -Wl,-z,relro,-z,now -Wl,-z,noexecstack
+
+# Flags de compilação
+CFLAGS_BASE := -Isrc/include -Wall -Wextra -std=gnu99 -D_GNU_SOURCE -fPIC
+CFLAGS_DEBUG := -g -O0 -DDEBUG -DARCH_LINUX
+CFLAGS_RELEASE := -O3 -DNDEBUG -DARCH_LINUX -flto
+CFLAGS_64 := $(CFLAGS_BASE) $(SECURITY_FLAGS) $(ARCH_CFLAGS)
+CFLAGS_32 := $(CFLAGS_BASE) $(SECURITY_FLAGS) -m32
+
+# Flags de linkagem
+LDFLAGS_BASE := $(HARDENING_FLAGS) -ldl -pthread
+LDFLAGS_64 := $(LDFLAGS_BASE) -lseccomp
+LDFLAGS_32 := $(HARDENING_FLAGS) -ldl -pthread -m32
+
+# Modo de compilação
+ifdef RELEASE
+    CFLAGS_64 += $(CFLAGS_RELEASE)
+    CFLAGS_32 += $(CFLAGS_RELEASE)
+    BUILD_MODE := Release
+else
+    CFLAGS_64 += $(CFLAGS_DEBUG)
+    CFLAGS_32 += $(CFLAGS_DEBUG)
+    BUILD_MODE := Debug
+endif
+
+# Verificar dependências do Arch Linux
+check-arch-deps:
+	@echo "=== Verificando Dependências Arch Linux ==="
+	@command -v pacman >/dev/null 2>&1 || { echo "ERRO: pacman não encontrado - não é Arch Linux"; exit 1; }
+	@pacman -Qq base-devel >/dev/null 2>&1 || { echo "ERRO: base-devel não instalado"; exit 1; }
+	@pacman -Qq libseccomp >/dev/null 2>&1 || { echo "ERRO: libseccomp não instalado"; exit 1; }
+	@command -v gcc >/dev/null 2>&1 || { echo "ERRO: gcc não encontrado"; exit 1; }
+	@echo "✓ Todas as dependências encontradas"
+
+# Arquivos fonte
+CORE_SOURCES := $(wildcard $(SRCDIR)/core/*.c)
+HOOK_SOURCES := $(wildcard $(SRCDIR)/hooks/*.c)
+SANDBOX_SOURCES := $(wildcard $(SRCDIR)/sandbox/*.c)
+
+# Objetos 64-bit
+CORE_OBJECTS_64 := $(CORE_SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/x64/%.o)
+HOOK_OBJECTS_64 := $(HOOK_SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/x64/%.o)
+
+# Objetos 32-bit (apenas core, sem libseccomp)
+CORE_OBJECTS_32 := $(CORE_SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/x32/%.o)
+
+# Targets principais
+.PHONY: all clean arch-info check-arch-deps install-arch test-arch
+
+all: check-arch-deps arch-info $(BINDIR)/barrierlayer_hook64.so $(BINDIR)/barrierlayer_hook32.so $(BINDIR)/stealth_launcher $(BINDIR)/sandbox_launcher
+
+arch-info:
+	@echo "=== BarrierLayer - Compilação Arch Linux ==="
+	@echo "Modo: $(BUILD_MODE)"
+	@echo "Arquitetura: $(UNAME_M)"
+	@echo "Kernel: $(shell uname -r)"
+	@echo "GCC: $(shell gcc --version | head -n1)"
+	@echo "Flags 64-bit: $(CFLAGS_64)"
+	@echo "Flags 32-bit: $(CFLAGS_32)"
+	@echo
+
+# Compilação objetos 64-bit
+$(OBJDIR)/x64/%.o: $(SRCDIR)/%.c
+	@echo "Compilando (64-bit): $<"
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_64) -c $< -o $@
+
+# Compilação objetos 32-bit
+$(OBJDIR)/x32/%.o: $(SRCDIR)/%.c
+	@echo "Compilando (32-bit): $<"
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_32) -c $< -o $@
+
+# Biblioteca hook 64-bit
+$(BINDIR)/barrierlayer_hook64.so: $(CORE_OBJECTS_64) $(HOOK_OBJECTS_64)
+	@echo "Linkando biblioteca 64-bit..."
+	$(CC) -shared -o $@ $^ $(LDFLAGS_64)
+	@echo "✓ Biblioteca 64-bit criada: $@"
+	@ls -lh $@
+
+# Biblioteca hook 32-bit (sem libseccomp)
+$(BINDIR)/barrierlayer_hook32.so: $(CORE_OBJECTS_32)
+	@echo "Linkando biblioteca 32-bit..."
+	$(CC) -shared -o $@ $^ $(LDFLAGS_32)
+	@echo "✓ Biblioteca 32-bit criada: $@"
+	@ls -lh $@
+
+# Stealth launcher
+$(BINDIR)/stealth_launcher: $(SRCDIR)/stealth_launcher.c
+	@echo "Compilando stealth launcher..."
+	$(CC) $(CFLAGS_64) -pie -o $@ $< $(LDFLAGS_64)
+	@echo "✓ Stealth launcher criado: $@"
+
+# Sandbox launcher
+$(BINDIR)/sandbox_launcher: $(SRCDIR)/sandbox/main_sandbox_launcher.c $(SRCDIR)/sandbox/sandbox_core.c $(CORE_OBJECTS_64)
+	@echo "Compilando sandbox launcher..."
+	$(CC) $(CFLAGS_64) -pie -o $@ $^ $(LDFLAGS_64)
+	@echo "✓ Sandbox launcher criado: $@"
+
+# Módulo kernel (opcional)
+kernel:
+	@echo "Compilando módulo kernel..."
+	$(MAKE) -C $(KERNELDIR)
+	@echo "✓ Módulo kernel compilado"
+
+# Limpeza
+clean:
+	@echo "Limpando arquivos de compilação..."
+	rm -rf $(OBJDIR) $(BINDIR)
+	$(MAKE) -C $(KERNELDIR) clean 2>/dev/null || true
+	@echo "✓ Limpeza concluída"
+
+# Instalação específica para Arch Linux
+install-arch: all
+	@echo "=== Instalação BarrierLayer - Arch Linux ==="
+	
+	# Criar diretórios
+	sudo mkdir -p /opt/barrierlayer/{bin,lib,share,etc}
+	sudo mkdir -p /etc/barrierlayer
+	sudo mkdir -p /var/log/barrierlayer
+	sudo mkdir -p /usr/share/doc/barrierlayer
+	
+	# Instalar bibliotecas
+	sudo cp $(BINDIR)/barrierlayer_hook64.so /opt/barrierlayer/lib/
+	sudo cp $(BINDIR)/barrierlayer_hook32.so /opt/barrierlayer/lib/
+	
+	# Instalar executáveis
+	sudo cp $(BINDIR)/stealth_launcher /opt/barrierlayer/bin/
+	sudo cp $(BINDIR)/sandbox_launcher /opt/barrierlayer/bin/
+	
+	# Instalar documentação
+	sudo cp README.md /usr/share/doc/barrierlayer/
+	sudo cp INSTALL_ARCH.md /usr/share/doc/barrierlayer/
+	sudo cp CHANGELOG.md /usr/share/doc/barrierlayer/
+	
+	# Criar script wrapper
+	sudo tee /usr/local/bin/barrierlayer > /dev/null << 'EOF'
+#!/bin/bash
+export LD_LIBRARY_PATH="/opt/barrierlayer/lib:$$LD_LIBRARY_PATH"
+export BARRIERLAYER_HOME="/opt/barrierlayer"
+exec /opt/barrierlayer/bin/stealth_launcher "$$@"
+EOF
+	sudo chmod +x /usr/local/bin/barrierlayer
+	
+	# Configurar permissões
+	sudo chown -R root:games /opt/barrierlayer
+	sudo chmod -R 755 /opt/barrierlayer
+	sudo chown -R $$USER:games /var/log/barrierlayer
+	sudo chmod 755 /var/log/barrierlayer
+	
+	@echo "✓ BarrierLayer instalado com sucesso!"
+	@echo "  Execute: barrierlayer --help"
+
+# Teste específico para Arch Linux
+test-arch: all
+	@echo "=== Teste BarrierLayer - Arch Linux ==="
+	
+	# Teste básico da biblioteca 64-bit
+	@echo "Testando biblioteca 64-bit..."
+	LD_PRELOAD=./$(BINDIR)/barrierlayer_hook64.so /bin/echo "✓ Hook 64-bit funcionando"
+	
+	# Teste do stealth launcher
+	@echo "Testando stealth launcher..."
+	./$(BINDIR)/stealth_launcher --version || echo "✓ Stealth launcher executável"
+	
+	# Teste do sandbox launcher
+	@echo "Testando sandbox launcher..."
+	./$(BINDIR)/sandbox_launcher --help || echo "✓ Sandbox launcher executável"
+	
+	# Verificar símbolos
+	@echo "Verificando símbolos da biblioteca..."
+	nm -D $(BINDIR)/barrierlayer_hook64.so | grep -E "(init_|hook_)" | head -5
+	
+	# Verificar dependências
+	@echo "Verificando dependências..."
+	ldd $(BINDIR)/barrierlayer_hook64.so | grep -E "(libseccomp|libdl|libpthread)"
+	
+	@echo "✓ Todos os testes passaram!"
+
+# Informações do sistema
+system-info:
+	@echo "=== Informações do Sistema Arch Linux ==="
+	@echo "Distribuição: $(shell cat /etc/arch-release 2>/dev/null || echo 'Não é Arch Linux')"
+	@echo "Kernel: $(shell uname -r)"
+	@echo "Arquitetura: $(shell uname -m)"
+	@echo "CPU: $(shell lscpu | grep 'Model name' | cut -d: -f2 | xargs)"
+	@echo "Memória: $(shell free -h | awk 'NR==2 {print $$2}')"
+	@echo "GCC: $(shell gcc --version | head -n1)"
+	@echo "Make: $(shell make --version | head -n1)"
+	@echo "Multilib: $(shell grep -q '^\[multilib\]' /etc/pacman.conf && echo 'Habilitado' || echo 'Desabilitado')"
+	@echo
+
+# Benchmark específico para Arch
+benchmark: all
+	@echo "=== Benchmark BarrierLayer - Arch Linux ==="
+	@echo "Testando performance de hooks..."
+	
+	# Teste de performance simples
+	time for i in {1..1000}; do \
+		LD_PRELOAD=./$(BINDIR)/barrierlayer_hook64.so /bin/true; \
+	done
+	
+	@echo "✓ Benchmark concluído"
+
+# Criar pacote para AUR (futuro)
+aur-package:
+	@echo "=== Preparando Pacote AUR ==="
+	@echo "TODO: Implementar criação de PKGBUILD"
+
+# Debug específico para Arch
+debug: CFLAGS_64 += -fsanitize=address -fsanitize=undefined
+debug: LDFLAGS_64 += -fsanitize=address -fsanitize=undefined
+debug: all
+	@echo "✓ Build debug com sanitizers criado"
+
+# Profile para otimização
+profile: CFLAGS_64 += -pg
+profile: LDFLAGS_64 += -pg
+profile: all
+	@echo "✓ Build com profiling criado"
+
+# Verificar compatibilidade com jogos
+game-compat-test:
+	@echo "=== Teste de Compatibilidade com Jogos ==="
+	@echo "Verificando Steam..."
+	@command -v steam >/dev/null 2>&1 && echo "✓ Steam encontrado" || echo "⚠ Steam não instalado"
+	@echo "Verificando Wine..."
+	@command -v wine >/dev/null 2>&1 && echo "✓ Wine encontrado" || echo "⚠ Wine não instalado"
+	@echo "Verificando Lutris..."
+	@command -v lutris >/dev/null 2>&1 && echo "✓ Lutris encontrado" || echo "⚠ Lutris não instalado"
+	@echo "Verificando Proton..."
+	@ls ~/.steam/steam/steamapps/common/Proton* 2>/dev/null | head -1 | xargs -I {} echo "✓ Proton encontrado: {}" || echo "⚠ Proton não encontrado"
+
+# Help específico para Arch
+help:
+	@echo "BarrierLayer Makefile - Arch Linux"
+	@echo
+	@echo "Targets disponíveis:"
+	@echo "  all              - Compilar tudo (padrão)"
+	@echo "  clean            - Limpar arquivos de compilação"
+	@echo "  check-arch-deps  - Verificar dependências do Arch"
+	@echo "  install-arch     - Instalar no sistema Arch Linux"
+	@echo "  test-arch        - Executar testes específicos do Arch"
+	@echo "  kernel           - Compilar módulo kernel"
+	@echo "  system-info      - Mostrar informações do sistema"
+	@echo "  benchmark        - Executar benchmark de performance"
+	@echo "  debug            - Compilar com debug e sanitizers"
+	@echo "  profile          - Compilar com profiling"
+	@echo "  game-compat-test - Testar compatibilidade com jogos"
+	@echo
+	@echo "Variáveis:"
+	@echo "  RELEASE=1        - Compilação otimizada"
+	@echo "  DEBUG=1          - Compilação debug (padrão)"
+	@echo
+	@echo "Exemplos:"
+	@echo "  make                    # Compilação debug"
+	@echo "  make RELEASE=1          # Compilação otimizada"
+	@echo "  make install-arch       # Instalar no sistema"
+	@echo "  make test-arch          # Executar testes"

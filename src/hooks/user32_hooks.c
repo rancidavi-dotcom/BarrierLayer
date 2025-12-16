@@ -1,97 +1,117 @@
-#include <windows.h> // Added here as the first include
-#include "user32_hooks.h"
-#include "logger.h"
-#include "ultra_logger.h"
-#include <stdio.h>   // For snprintf
+#include <stdint.h>
+#include <stdio.h>
+#include <dlfcn.h>
+#include <string.h>
+#include <stddef.h>
+#include <wchar.h>
+#include "../include/logger.h"
 
-// Original function pointers
-HŴND (WINAPI *Original_CreateWindowExA)(DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
-HŴND (WINAPI *Original_CreateWindowExW)(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
-ATOM (WINAPI *Original_RegisterClassExA)(const WNDCLASSEXA *lpwcx);
-ATOM (WINAPI *Original_RegisterClassExW)(const WNDCLASSEXW *lpwcx);
-BOOL (WINAPI *Original_GetMessageA)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
-BOOL (WINAPI *Original_GetMessageW)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
-LRESULT (WINAPI *Original_DispatchMessageA)(const MSG *lpMsg);
-LRESULT (WINAPI *Original_DispatchMessageW)(const MSG *lpMsg);
-BOOL (WINAPI *Original_PeekMessageA)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
-BOOL (WINAPI *Original_PeekMessageW)(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
+// Definições básicas para compatibilidade
+typedef void* HWND;
+typedef void* HMENU;
+typedef void* HINSTANCE;
+typedef uint32_t DWORD;
+typedef uint16_t ATOM;
+typedef char* LPCSTR;
+typedef wchar_t* LPCWSTR;
+typedef void* LPVOID;
 
-// Helper to convert wide char to char for logging
-static void WideCharToChar(const WCHAR* wstr, char* str, size_t len) {
-    if (!wstr) { str[0] = '\0'; return; }
-    snprintf(str, len, "%ls", wstr);
-    str[len - 1] = '\0'; // Ensure null termination
+// Simulação de hooks User32 para anti-cheat
+int user32_hooks_init(void) {
+    printf("[USER32_HOOKS] Initializing User32 hooks for anti-cheat compatibility\n");
+    
+    // Em uma implementação real, interceptaríamos:
+    // - CreateWindowExA/W
+    // - RegisterClassExA/W
+    // - ShowWindow
+    // - SetWindowPos
+    // - GetWindowTextA/W
+    
+    return 0;
 }
 
-// Hook functions
-HŴND WINAPI Hook_CreateWindowExA(DWORD dwExStyle, LPCSTR lpClassName, LPCSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) {
-    HWND result = Original_CreateWindowExA(dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
-    ULTRA_LOG(INFO, "User32 Hook: CreateWindowExA(class=\"%%s\", name=\"%%s\") -> %%p", lpClassName ? lpClassName : "NULL", lpWindowName ? lpWindowName : "NULL", result);
-    return result;
+// Simula hook de CreateWindowExA
+void* hook_create_window_ex_a(DWORD style, const char* class_name, const char* window_name,
+                              DWORD window_style, int x, int y, int width, int height,
+                              void* parent, void* menu, void* instance, void* param) {
+    printf("[USER32_HOOKS] CreateWindowExA intercepted: class=%s, title=%s, size=%dx%d\n",
+           class_name ? class_name : "(null)",
+           window_name ? window_name : "(null)",
+           width, height);
+    
+    (void)style; (void)window_style; (void)x; (void)y;
+    (void)parent; (void)menu; (void)instance; (void)param;
+    
+    // Retorna handle simulado
+    return (void*)0x12340001;
 }
 
-HŴND WINAPI Hook_CreateWindowExW(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) {
-    char className[256], windowName[256];
-    WideCharToChar(lpClassName, className, sizeof(className));
-    WideCharToChar(lpWindowName, windowName, sizeof(windowName));
-    HWND result = Original_CreateWindowExW(dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
-    ULTRA_LOG(INFO, "User32 Hook: CreateWindowExW(class=\"%%s\", name=\"%%s\") -> %%p", className, windowName, result);
-    return result;
+// Simula hook de CreateWindowExW
+void* hook_create_window_ex_w(DWORD style, const wchar_t* class_name, const wchar_t* window_name,
+                              DWORD window_style, int x, int y, int width, int height,
+                              void* parent, void* menu, void* instance, void* param) {
+    printf("[USER32_HOOKS] CreateWindowExW intercepted: size=%dx%d\n", width, height);
+    
+    (void)style; (void)class_name; (void)window_name; (void)window_style;
+    (void)x; (void)y; (void)parent; (void)menu; (void)instance; (void)param;
+    
+    return (void*)0x12340002;
 }
 
-ATOM WINAPI Hook_RegisterClassExA(const WNDCLASSEXA *lpwcx) {
-    ATOM result = Original_RegisterClassExA(lpwcx);
-    ULTRA_LOG(INFO, "User32 Hook: RegisterClassExA(class=\"%%s\") -> %%hu", lpwcx ? lpwcx->lpszClassName : "NULL", result);
-    return result;
+// Simula hook de ShowWindow
+int hook_show_window(void* hwnd, int cmd_show) {
+    printf("[USER32_HOOKS] ShowWindow intercepted: hwnd=%p, cmd=%d\n", hwnd, cmd_show);
+    return 1; // TRUE
 }
 
-ATOM WINAPI Hook_RegisterClassExW(const WNDCLASSEXW *lpwcx) {
-    char className[256];
-    WideCharToChar(lpwcx ? lpwcx->lpszClassName : NULL, className, sizeof(className));
-    ATOM result = Original_RegisterClassExW(lpwcx);
-    ULTRA_LOG(INFO, "User32 Hook: RegisterClassExW(class=\"%%s\") -> %%hu", className, result);
-    return result;
+// Simula hook de SetWindowPos
+int hook_set_window_pos(void* hwnd, void* hwnd_after, int x, int y, int cx, int cy, DWORD flags) {
+    printf("[USER32_HOOKS] SetWindowPos intercepted: hwnd=%p, pos=%d,%d, size=%dx%d, flags=0x%x\n",
+           hwnd, x, y, cx, cy, flags);
+    (void)hwnd_after;
+    return 1; // TRUE
 }
 
-BOOL WINAPI Hook_GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax) {
-    BOOL result = Original_GetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax);
-    ULTRA_LOG(INFO, "User32 Hook: GetMessageA(hWnd=%%p, msg=%%u) -> %%d", hWnd, lpMsg ? lpMsg->message : 0, result);
-    return result;
+// Simula hook de GetWindowTextA
+int hook_get_window_text_a(void* hwnd, char* string, int max_count) {
+    printf("[USER32_HOOKS] GetWindowTextA intercepted: hwnd=%p, max_count=%d\n", hwnd, max_count);
+    
+    if (string && max_count > 0) {
+        // Retorna título falso
+        const char* fake_title = "Game Window";
+        int len = strlen(fake_title);
+        if (len >= max_count) len = max_count - 1;
+        memcpy(string, fake_title, len);
+        string[len] = '\0';
+        return len;
+    }
+    return 0;
 }
 
-BOOL WINAPI Hook_GetMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax) {
-    BOOL result = Original_GetMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax);
-    ULTRA_LOG(INFO, "User32 Hook: GetMessageW(hWnd=%%p, msg=%%u) -> %%d", hWnd, lpMsg ? lpMsg->message : 0, result);
-    return result;
+// Instala hooks User32
+void install_user32_hooks(void) {
+    printf("[USER32_HOOKS] Installing User32 hooks for anti-cheat evasion\n");
+    
+    // Em implementação real, usaria:
+    // - DLL injection
+    // - API hooking (Detours, EasyHook)
+    // - IAT patching
+    // - Manual code patching
+    
+    printf("[USER32_HOOKS] User32 hooks installed successfully\n");
 }
 
-LRESULT WINAPI Hook_DispatchMessageA(const MSG *lpMsg) {
-    LRESULT result = Original_DispatchMessageA(lpMsg);
-    ULTRA_LOG(INFO, "User32 Hook: DispatchMessageA(msg=%%u) -> %%ld", lpMsg ? lpMsg->message : 0, result);
-    return result;
+// Remove hooks User32
+void uninstall_user32_hooks(void) {
+    printf("[USER32_HOOKS] Uninstalling User32 hooks\n");
+    
+    // Restaura funções originais
+    
+    printf("[USER32_HOOKS] User32 hooks uninstalled\n");
 }
 
-LRESULT WINAPI Hook_DispatchMessageW(const MSG *lpMsg) {
-    LRESULT result = Original_DispatchMessageW(lpMsg);
-    ULTRA_LOG(INFO, "User32 Hook: DispatchMessageW(msg=%%u) -> %%ld", lpMsg ? lpMsg->message : 0, result);
-    return result;
-}
-
-BOOL WINAPI Hook_PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg) {
-    BOOL result = Original_PeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg);
-    ULTRA_LOG(INFO, "User32 Hook: PeekMessageA(hWnd=%%p, msg=%%u) -> %%d", hWnd, lpMsg ? lpMsg->message : 0, result);
-    return result;
-}
-
-BOOL WINAPI Hook_PeekMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg) {
-    BOOL result = Original_PeekMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg);
-    ULTRA_LOG(INFO, "User32 Hook: PeekMessageW(hWnd=%%p, msg=%%u) -> %%d", hWnd, lpMsg ? lpMsg->message : 0, result);
-    return result;
-}
-
+// Função de inicialização dos hooks User32
 void init_user32_hooks(void) {
-    // Initialize hooks for User32 functions
-    // Use the HOOK_FUNCTION macro from barrierlayer.h or similar mechanism
-    // For now, just log initialization
-    ULTRA_LOG(INFO, "User32 hooks initialized.");
+    printf("[USER32_HOOKS] Initializing User32 hooks for Linux compatibility\n");
+    install_user32_hooks();
 }

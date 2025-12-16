@@ -32,11 +32,11 @@ BASE_LDFLAGS = -Wl,-z,relro,-z,now -ldl -lseccomp -pthread
 # --- Architecture Specific Flags ---
 # 64-bit (default)
 CFLAGS64 = $(BASE_CFLAGS)
-LDFLAGS64 = $(LDFLAGS64)
+LDFLAGS64 = $(BASE_LDFLAGS)
 
 # 32-bit
 CFLAGS32 = $(BASE_CFLAGS) -m32
-LDFLAGS32 = $(LDFLAGS32) -m32
+LDFLAGS32 = -Wl,-z,relro,-z,now -ldl -pthread -m32
 
 # --- Directories ---
 SRC_DIR = src
@@ -51,6 +51,9 @@ HOOK_DIR = $(SRC_DIR)/hooks
 # --- Source Files ---
 CORE_SOURCES = $(wildcard $(CORE_DIR)/*.c)
 HOOK_SOURCES = $(wildcard $(HOOK_DIR)/*.c)
+WINE_FILTER_SRC = $(SRC_DIR)/wine_process_filter.c
+PROCESS_HIDING_SRC = $(SRC_DIR)/hooks/process_hiding.c
+ADVANCED_LOGGER_SRC = $(SRC_DIR)/core/advanced_logger.c
 STEALTH_LAUNCHER_SRC = $(SRC_DIR)/stealth_launcher.c
 SANDBOX_LAUNCHER_SRC = $(SRC_DIR)/sandbox_launcher.c
 SANDBOX_CORE_SRC = $(SRC_DIR)/sandbox/sandbox_core.c
@@ -60,11 +63,13 @@ SANDBOX_LAUNCHER_SRC_MAIN = $(SRC_DIR)/sandbox/main_sandbox_launcher.c
 # 64-bit Objects
 CORE_OBJECTS64 = $(patsubst $(CORE_DIR)/%.c,$(OBJ_DIR64)/core/%.o,$(CORE_SOURCES))
 HOOK_OBJECTS64 = $(patsubst $(HOOK_DIR)/%.c,$(OBJ_DIR64)/hooks/%.o,$(HOOK_SOURCES))
+WINE_FILTER_OBJ64 = $(OBJ_DIR64)/wine_process_filter.o
 SANDBOX_CORE_OBJ64 = $(patsubst $(SRC_DIR)/sandbox/%.c,$(OBJ_DIR64)/sandbox/%.o,$(SANDBOX_CORE_SRC))
 
 # 32-bit Objects
 CORE_OBJECTS32 = $(patsubst $(CORE_DIR)/%.c,$(OBJ_DIR32)/core/%.o,$(CORE_SOURCES))
 Hook_OBJECTS32 = $(patsubst $(HOOK_DIR)/%.c,$(OBJ_DIR32)/hooks/%.o,$(HOOK_SOURCES))
+WINE_FILTER_OBJ32 = $(OBJ_DIR32)/wine_process_filter.o
 SANDBOX_CORE_OBJ32 = $(patsubst $(SRC_DIR)/sandbox/%.c,$(OBJ_DIR32)/sandbox/%.o,$(SANDBOX_CORE_SRC))
 
 
@@ -99,16 +104,20 @@ $(OBJ_DIR64)/hooks/%.o: $(HOOK_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS64) -c $< -o $@
 
-# Specific rules for GDI and User32 hooks (64-bit) to include MinGW headers
+# Specific rules for GDI and User32 hooks (64-bit) - using standard headers
 $(OBJ_DIR64)/hooks/gdi_hooks.o: $(HOOK_DIR)/gdi_hooks.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS64) -I/usr/x86_64-w64-mingw32/include/ -c $< -o $@
+	$(CC) $(CFLAGS64) -c $< -o $@
 
 $(OBJ_DIR64)/hooks/user32_hooks.o: $(HOOK_DIR)/user32_hooks.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS64) -I/usr/x86_64-w64-mingw32/include/ -c $< -o $@
+	$(CC) $(CFLAGS64) -c $< -o $@
 
 $(OBJ_DIR64)/sandbox/%.o: $(SRC_DIR)/sandbox/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS64) -c $< -o $@
+
+$(WINE_FILTER_OBJ64): $(WINE_FILTER_SRC)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS64) -c $< -o $@
 
@@ -120,16 +129,20 @@ $(OBJ_DIR32)/hooks/%.o: $(HOOK_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS32) -c $< -o $@
 
-# Specific rules for GDI and User32 hooks (32-bit) to include MinGW headers
+# Specific rules for GDI and User32 hooks (32-bit) - using standard headers
 $(OBJ_DIR32)/hooks/gdi_hooks.o: $(HOOK_DIR)/gdi_hooks.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS32) -I/usr/i686-w64-mingw32/include/ -c $< -o $@
+	$(CC) $(CFLAGS32) -c $< -o $@
 
 $(OBJ_DIR32)/hooks/user32_hooks.o: $(HOOK_DIR)/user32_hooks.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS32) -I/usr/i686-w64-mingw32/include/ -c $< -o $@
+	$(CC) $(CFLAGS32) -c $< -o $@
 
 $(OBJ_DIR32)/sandbox/%.o: $(SRC_DIR)/sandbox/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS32) -c $< -o $@
+
+$(WINE_FILTER_OBJ32): $(WINE_FILTER_SRC)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS32) -c $< -o $@
 
@@ -137,12 +150,12 @@ $(OBJ_DIR32)/sandbox/%.o: $(SRC_DIR)/sandbox/%.c
 # --- Linking Rules ---
 
 # Build 64-bit Hook Library
-$(HOOK_LIBRARY64): $(CORE_OBJECTS64) $(HOOK_OBJECTS64)
+$(HOOK_LIBRARY64): $(CORE_OBJECTS64) $(HOOK_OBJECTS64) $(WINE_FILTER_OBJ64)
 	@echo -e "$(BLUE)[INFO]$(NC) Building 64-bit Hook Library..."
 	$(CC) $(CFLAGS64) -shared -o $@ $^ $(LDFLAGS64)
 
 # Build 32-bit Hook Library
-$(HOOK_LIBRARY32): $(CORE_OBJECTS32) $(HOOK_OBJECTS32)
+$(HOOK_LIBRARY32): $(CORE_OBJECTS32) $(HOOK_OBJECTS32) $(WINE_FILTER_OBJ32)
 	@echo -e "$(BLUE)[INFO]$(NC) Building 32-bit Hook Library..."
 	$(CC) $(CFLAGS32) -shared -o $@ $^ $(LDFLAGS32)
 
